@@ -71,7 +71,7 @@ class Epoch:
 
 
 class TrainEpoch(Epoch):
-    def __init__(self, model, loss, metrics, optimizer, scheduler, device="cpu", verbose=True):
+    def __init__(self, model, loss, metrics, optimizer, scheduler=None, device="cpu", verbose=True):
         super().__init__(
             model=model,
             loss=loss,
