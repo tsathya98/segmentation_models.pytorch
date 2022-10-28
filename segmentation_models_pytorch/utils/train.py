@@ -2,7 +2,7 @@ import sys
 import torch
 from tqdm import tqdm as tqdm
 from .meter import AverageValueMeter
-
+import wandb
 
 class Epoch:
     def __init__(self, model, loss, metrics, stage_name, device="cpu", verbose=True):
@@ -48,13 +48,17 @@ class Epoch:
         ) as iterator:
             for x, y in iterator:
                 x, y = x.to(self.device), y.to(self.device)
-                loss, y_pred = self.batch_update(x, y)
-
+                loss, y_pred, lr, training = self.batch_update(x, y)
+                
                 # update loss logs
                 loss_value = loss.cpu().detach().numpy()
                 loss_meter.add(loss_value)
                 loss_logs = {self.loss.__name__: loss_meter.mean}
                 logs.update(loss_logs)
+                if(lr != None and training == True):
+                    # Update lr logs
+                    lr_logs = {'lr': lr[0]}
+                    logs.update(lr_logs)
 
                 # update metrics logs
                 for metric_fn in self.metrics:
@@ -62,7 +66,8 @@ class Epoch:
                     metrics_meters[metric_fn.__name__].add(metric_value)
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)
-
+                if training:
+                    wandb.log(logs)
                 if self.verbose:
                     s = self._format_logs(logs)
                     iterator.set_postfix_str(s)
@@ -92,9 +97,11 @@ class TrainEpoch(Epoch):
         loss = self.loss(prediction, y)
         loss.backward()
         self.optimizer.step()
+        lr = None
         if self.scheduler is not None:
             self.scheduler.step()
-        return loss, prediction
+            lr = self.scheduler.get_last_lr()
+        return loss, prediction, lr, True
 
 
 class ValidEpoch(Epoch):
@@ -115,4 +122,4 @@ class ValidEpoch(Epoch):
         with torch.no_grad():
             prediction = self.model.forward(x)
             loss = self.loss(prediction, y)
-        return loss, prediction
+        return loss, prediction, None, False
