@@ -48,7 +48,7 @@ class Epoch:
         ) as iterator:
             for x, y in iterator:
                 x, y = x.to(self.device), y.to(self.device)
-                loss, y_pred, lr, training = self.batch_update(x, y)
+                loss, y_pred, lr, training, wandb_status = self.batch_update(x, y)
                 
                 # update loss logs
                 loss_value = loss.cpu().detach().numpy()
@@ -66,8 +66,9 @@ class Epoch:
                     metrics_meters[metric_fn.__name__].add(metric_value)
                 metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
                 logs.update(metrics_logs)
-                if training:
-                    wandb.log(logs)
+                if wandb_status == True:
+                    if training:
+                        wandb.log(logs)
                 if self.verbose:
                     s = self._format_logs(logs)
                     iterator.set_postfix_str(s)
@@ -76,7 +77,7 @@ class Epoch:
 
 
 class TrainEpoch(Epoch):
-    def __init__(self, model, loss, metrics, optimizer, scheduler=None, device="cpu", verbose=True):
+    def __init__(self, model, loss, metrics, optimizer, scheduler=None, device="cpu", wandb_status=False, verbose=True):
         super().__init__(
             model=model,
             loss=loss,
@@ -87,6 +88,7 @@ class TrainEpoch(Epoch):
         )
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.wandb = wandb_status
 
     def on_epoch_start(self):
         self.model.train()
@@ -101,11 +103,11 @@ class TrainEpoch(Epoch):
         if self.scheduler is not None:
             self.scheduler.step()
             lr = self.scheduler.get_last_lr()
-        return loss, prediction, lr, True
+        return loss, prediction, lr, True, self.wandb
 
 
 class ValidEpoch(Epoch):
-    def __init__(self, model, loss, metrics, device="cpu", verbose=True):
+    def __init__(self, model, loss, metrics, device="cpu", wandb_status = False, verbose=True):
         super().__init__(
             model=model,
             loss=loss,
@@ -114,6 +116,7 @@ class ValidEpoch(Epoch):
             device=device,
             verbose=verbose,
         )
+        self.wandb = wandb_status
 
     def on_epoch_start(self):
         self.model.eval()
@@ -122,4 +125,4 @@ class ValidEpoch(Epoch):
         with torch.no_grad():
             prediction = self.model.forward(x)
             loss = self.loss(prediction, y)
-        return loss, prediction, None, False
+        return loss, prediction, None, False, self.wandb
